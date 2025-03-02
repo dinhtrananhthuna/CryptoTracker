@@ -1,21 +1,37 @@
 // src/components/CoinList.tsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Paper,
+    CircularProgress,
+    Typography,
+    Box,
+} from '@mui/material';
 import { Coin } from '../models';
 
 function CoinList() {
     const [coins, setCoins] = useState<Coin[]>([]);
-    const [error, setError] = useState<string | null>(null); // Khai báo kiểu string | null
+    const [loading, setLoading] = useState(true); // Thêm state loading
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchCoins = async () => {
+            setLoading(true); // Bắt đầu loading
             try {
-                const response = await axios.get('/api/coins');
+                const response = await axios.get<Coin[]>('/api/coins');
                 setCoins(response.data);
                 setError(null);
             } catch (error) {
                 console.error("Error fetching coins:", error);
-                setError("Failed to fetch coins. Please check your API connection."); // OK
+                setError("Failed to fetch coins. Please check your API connection.");
+            } finally {
+                setLoading(false); // Kết thúc loading
             }
         };
 
@@ -23,43 +39,58 @@ function CoinList() {
     }, []);
 
     if (error) {
-        return <div>Error: {error}</div>;
+        return (
+            <Box p={2}>
+                <Typography color="error">{error}</Typography>
+            </Box>
+        );
     }
 
-    if (!coins || coins.length === 0) {
-        return <div>Loading...</div>;
+    if (loading) {
+        return (
+            <Box display="flex" justifyContent="center" p={2}>
+                <CircularProgress /> {/* Hiển thị loading spinner */}
+            </Box>
+        );
+    }
+      if (!coins || coins.length === 0) {
+        return <Box p={2}><Typography>No coins found.</Typography></Box>;
     }
 
     return (
-        <div>
-            <h2>Coin List</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>Name</th>
-                        <th>Quote Asset</th>
-                        <th>Total Quantity</th>
-                        <th>Average Buy Price</th>
-                        <th>Current Price</th>
-                        <th>Current Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {coins.map(coin => (
-                        <tr key={coin.symbol}>
-                            <td>{coin.symbol}</td>
-                            <td>{coin.name}</td>
-                            <td>{coin.quoteAsset}</td>
-                            <td>{coin.totalQuantity}</td>
-                            <td>{coin.averageBuyPrice}</td>
-                            <td>{coin.currentPrice}</td>
-                            <td>{coin.currentValue}</td>
-                        </tr>
+        <TableContainer component={Paper}>
+            <Table sx={{ minWidth: 650 }} aria-label="simple table">
+                <TableHead>
+                    <TableRow>
+                        <TableCell>Symbol</TableCell>
+                        <TableCell>Name</TableCell>
+                        <TableCell align="right">Quote Asset</TableCell>
+                        <TableCell align="right">Total Quantity</TableCell>
+                        <TableCell align="right">Average Buy Price</TableCell>
+                        <TableCell align="right">Current Price</TableCell>
+                        <TableCell align="right">Current Value</TableCell>
+                    </TableRow>
+                </TableHead>
+                <TableBody>
+                    {coins.map((coin) => (
+                        <TableRow
+                            key={coin.symbol}
+                            sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                        >
+                            <TableCell component="th" scope="row">
+                                {coin.symbol}
+                            </TableCell>
+                            <TableCell>{coin.name}</TableCell>
+                             <TableCell align="right">{coin.quoteAsset}</TableCell>
+                            <TableCell align="right">{coin.totalQuantity}</TableCell>
+                            <TableCell align="right">{coin.averageBuyPrice}</TableCell>
+                            <TableCell align="right">{coin.currentPrice}</TableCell>
+                            <TableCell align="right">{coin.currentValue}</TableCell>
+                        </TableRow>
                     ))}
-                </tbody>
-            </table>
-        </div>
+                </TableBody>
+            </Table>
+        </TableContainer>
     );
 }
 
