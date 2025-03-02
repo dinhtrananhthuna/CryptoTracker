@@ -15,11 +15,73 @@ public class CoinsController : ControllerBase
         _portfolioService = portfolioService;
     }
 
-    // GET: api/Coins
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Coin>>> GetCoins()
+    public async Task<ActionResult<IEnumerable<Coin>>> GetCoins(
+         string? sort,
+         string? order,
+         string? filter,
+         int page = 1,
+         int pageSize = 10)
     {
-        return Ok(await _portfolioService.GetCoinsAsync()); // Sử dụng service
+        try
+        {
+            IEnumerable<Coin> coins = await _portfolioService.GetCoinsAsync();
+
+            // Filtering
+            if (!string.IsNullOrEmpty(filter))
+            {
+                coins = coins.Where(c => c.Symbol.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                                        c.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            // Sorting
+            if (!string.IsNullOrEmpty(sort))
+            {
+                switch (sort.ToLower())
+                {
+                    case "name":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.Name) : coins.OrderBy(c => c.Name);
+                        break;
+                    case "symbol":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.Symbol) : coins.OrderBy(c => c.Symbol);
+                        break;
+                    case "totalquantity":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.TotalQuantity) : coins.OrderBy(c => c.TotalQuantity);
+                        break;
+                    case "averagebuyprice":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.AverageBuyPrice) : coins.OrderBy(c => c.AverageBuyPrice);
+                        break;
+                    case "currentprice":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.CurrentPrice) : coins.OrderBy(c => c.CurrentPrice);
+                        break;
+                    case "currentvalue":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.CurrentValue) : coins.OrderBy(c => c.CurrentValue);
+                        break;
+                    case "quoteasset":
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.QuoteAsset) : coins.OrderBy(c => c.QuoteAsset);
+                        break;
+                    default:
+                        coins = order?.ToLower() == "desc" ? coins.OrderByDescending(c => c.Symbol) : coins.OrderBy(c => c.Symbol); // Default
+                        break;
+                }
+            }
+
+
+            // Count total coins *before* pagination
+            int totalCount = coins.Count();
+
+            // Pagination.  Skip and Take *after* filtering and sorting
+            coins = coins.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+            // Có thể trả về totalCount để frontend biết tổng số trang
+            return Ok(new { data = coins, totalCount = totalCount });
+        }
+        catch (Exception ex)
+        {
+            // Log lỗi
+            return StatusCode(500, "Internal Server Error"); // Hoặc trả về lỗi cụ thể hơn
+        }
+
     }
 
     // GET: api/Coins/BTCUSDT
