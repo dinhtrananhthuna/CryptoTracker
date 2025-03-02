@@ -18,7 +18,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import CustomLoading from './CustomLoading';
 import {
-    ComposedChart,
+    ComposedChart, // Sử dụng ComposedChart để kết hợp Line và Bar
     CartesianGrid,
     XAxis,
     YAxis,
@@ -26,9 +26,8 @@ import {
     Legend,
     Brush,
     ResponsiveContainer,
-    BarChart,
+    Line,
     Bar,
-    Rectangle
 } from 'recharts';
 
 const SectionPaper = styled(Paper)(({ theme }) => ({
@@ -36,7 +35,7 @@ const SectionPaper = styled(Paper)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
-// Interface cho kline data (nếu bạn chưa có)
+// Interface cho kline data
 interface BinanceKline {
     openTime: number;
     open: number;
@@ -51,50 +50,102 @@ interface BinanceKline {
     takerBuyQuoteAssetVolume: number;
 }
 
-// Interface cho CoinDetailDto (từ backend)
+// Interface cho CoinDetailDto
 interface CoinDetailDto {
   symbol: string;
   name: string;
-  image?: string; // Optional
+  image?: string;
   totalQuantity: number;
   averageBuyPrice: number;
   currentPrice: number;
   currentValue: number;
   quoteAsset: string;
-  highPrice: number; // Từ Binance 24h ticker
-  lowPrice: number;   // Từ Binance 24h ticker
+  highPrice: number;
+  lowPrice: number;
   profitLoss: number;
 }
+
+// Custom tick formatter cho trục X (ngày/tháng/năm)
 const CustomTickFormatter = (tick: number) => {
-  return new Date(tick).toLocaleDateString(); // Or any other format you prefer
+  const date = new Date(tick);
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`; // D/M/YYYY
 };
+
+// Custom Tooltip (hiển thị ngày tháng theo định dạng MM-DD-YYYY)
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const date = new Date(data.openTime);
+    const formattedDate = `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}-${date.getFullYear()}`;
+
+    return (
+      <div className="custom-tooltip" style={{ backgroundColor: 'white', padding: '5px', border: '1px solid #ccc' }}>
+        <p>{formattedDate}</p>
+        <p>{`Close: ${data.close}`}</p>
+        <p>{`Open: ${data.open}`}</p>
+        <p>{`High: ${data.high}`}</p>
+         <p>{`Low: ${data.low}`}</p>
+        <p>{`Volume: ${data.volume}`}</p>
+        {/* Thêm các thông tin khác nếu muốn */}
+      </div>
+    );
+  }
+  return null;
+};
+
+// Hàm tính Simple Moving Average (SMA)
+function calculateSMA(data: BinanceKline[], period: number, field: keyof BinanceKline): (number | null)[] {
+  const sma: (number | null)[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      sma.push(null); // Không đủ dữ liệu
+    } else {
+      let sum = 0;
+      for (let j = 0; j < period; j++) {
+            const value = data[i - j][field];
+            if(typeof value === 'number'){
+                sum += value;
+            }
+            else{
+                //Xử lý data
+                return [];
+            }
+      }
+      sma.push(sum / period);
+    }
+  }
+  return sma;
+}
+
 function CoinDetail() {
-  const [coin, setCoin] = useState<CoinDetailDto | null>(null); // Sử dụng CoinDetailDto
+  const [coin, setCoin] = useState<CoinDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [klines, setKlines] = useState<BinanceKline[]>([]);
   const [interval, setInterval] = useState('1d');
+  const [maPeriod, setMaPeriod] = useState(20); // Chu kỳ MA (mặc định là 20)
+
 
   const { symbol } = useParams<{ symbol: string }>();
 
-    // Fetch klines data
-  const fetchKlines = async (symbol: string, interval: string) => {
+   const fetchKlines = async (symbol: string, interval: string) => {
 
-      try{
+        try{
         const response = await axios.get<BinanceKline[]>(`/api/Binance/klines?symbol=${symbol}&interval=${interval}`);
         setKlines(response.data);
         console.log(response.data)
-      }
-      catch(error: any){
-         console.error("Error fetching Klines:", error);
-      }
-  }
+        }
+        catch(error: any){
+            console.error("Error fetching Klines:", error);
+        }
+    }
+
   useEffect(() => {
     const fetchCoinDetails = async () => {
       setLoading(true);
       try {
-        const response = await axios.get<CoinDetailDto>(`/api/coins/${symbol}/details`); // Gọi endpoint /details
-        setCoin(response.data); // Dữ liệu trả về là CoinDetailDto
+        const response = await axios.get<CoinDetailDto>(`/api/coins/${symbol}/details`);
+        setCoin(response.data);
         setError(null);
 
         if(response.data){
@@ -112,7 +163,8 @@ function CoinDetail() {
       fetchCoinDetails();
     }
   }, [symbol]);
-   useEffect(() => {
+// Fetch lại klines khi interval thay đổi
+  useEffect(() => {
     if (coin) {
       fetchKlines(coin.symbol, interval);
     }
@@ -126,118 +178,114 @@ function CoinDetail() {
     return <Box p={2}><Typography>Coin not found.</Typography></Box>;
   }
 
-  // Không cần tính profitLoss ở đây nữa, vì đã có trong DTO
+    // Tính toán SMA (sau khi có dữ liệu klines)
+    const sma20 = calculateSMA(klines, maPeriod, 'close');
+
+    // Tạo một mảng dữ liệu mới, kết hợp klines và SMA
+    const dataWithMA = klines.map((item, index) => ({
+        ...item,
+        sma20: sma20[index],
+    }));
 
   return (
     <CustomLoading isLoading={loading}>
       <Box p={2}>
-        {/* Header */}
+        {/* Header (giữ nguyên) */}
         <SectionPaper>
-            <Grid container alignItems="center" spacing={2}>
-                <Grid item>
-                <Avatar src={coin.image} alt={coin.name} sx={{ width: 56, height: 56 }} />
-                </Grid>
-                <Grid item>
-                <Typography variant="h5">{coin.name} ({coin.symbol})</Typography>
-                </Grid>
-                <Grid item xs>
-                <Box display="flex" justifyContent="flex-end" alignItems="center">
-                    <Typography variant="h6" sx={{ mr: 1 }}>
-                    ${coin.currentPrice.toLocaleString()}
-                    </Typography>
-                </Box>
-                </Grid>
+          <Grid container alignItems="center" spacing={2}>
+            <Grid item>
+              <Avatar src={coin.image} alt={coin.name} sx={{ width: 56, height: 56 }} />
             </Grid>
-        </SectionPaper>
-
-        {/* Chart */}
-        <SectionPaper>
-             <FormControl fullWidth>
-                <InputLabel id="interval-select-label">Interval</InputLabel>
-                <Select
-                    labelId="interval-select-label"
-                    id="interval-select"
-                    value={interval}
-                    label="Interval"
-                    onChange={(e) => setInterval(e.target.value as string)}
-                >
-                    <MenuItem value="1d">1 Day</MenuItem>
-                    <MenuItem value="4h">4 Hours</MenuItem>
-                    <MenuItem value="1h">1 Hour</MenuItem>
-                     <MenuItem value="15m">15 Minutes</MenuItem>
-                </Select>
-            </FormControl>
-            <ResponsiveContainer width="100%" height={400}>
-                <ComposedChart data={klines} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="openTime" tickFormatter={CustomTickFormatter}  />
-                    <YAxis type="number" domain={['dataMin', 'dataMax']} />
-                    <Tooltip />
-                    <Legend />
-
-                    {klines.map((entry, index) => (
-                        <Rectangle
-                            key={`candle-${index}`}
-                            x={index * (100 / (klines.length + 2)) }
-                            y={Math.max(entry.open, entry.close)}
-                            width={(100 / (klines.length + 2)) * 0.8}
-                            height={Math.abs(entry.open - entry.close)}
-                            fill={entry.open > entry.close ? '#ef5350' : '#26a69a'}
-                            radius={[4, 4, 0, 0]}
-                        />
-                    ))}
-                <BarChart data={klines}>
-                    <Bar dataKey="volume" fill="#8884d8"  />
-                </BarChart>
-                <Brush dataKey="openTime" height={30} stroke="#8884d8" tickFormatter={CustomTickFormatter} />
-                </ComposedChart>
-            </ResponsiveContainer>
-        </SectionPaper>
-
-        {/* Coin Details */}
-        <SectionPaper>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6">Market Data</Typography>
-              <Divider sx={{ mb: 1 }} />
-              <Typography>24h High: ${coin.highPrice.toLocaleString()}</Typography>
-              <Typography>24h Low: ${coin.lowPrice.toLocaleString()}</Typography>
+            <Grid item>
+              <Typography variant="h5">{coin.name} ({coin.symbol})</Typography>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6">Your Holdings</Typography>
-              <Divider sx={{ mb: 1 }} />
-              <Typography>Total Quantity: {coin.totalQuantity}</Typography>
-              <Typography>Average Buy Price: ${coin.averageBuyPrice.toLocaleString()}</Typography>
-              <Typography>Current Value: ${coin.currentValue.toLocaleString()}</Typography>
-              <Typography>
-                Profit/Loss:{' '}
-                <Chip
-                  label={`${coin.profitLoss.toFixed(2)}`}
-                  color={coin.profitLoss >= 0 ? 'success' : 'error'}
-                  variant="outlined"
-                />
-              </Typography>
+            <Grid item xs>
+              <Box display="flex" justifyContent="flex-end" alignItems="center">
+                <Typography variant="h6" sx={{ mr: 1 }}>
+                  ${coin.currentPrice.toLocaleString()}
+                </Typography>
+              </Box>
             </Grid>
           </Grid>
         </SectionPaper>
 
-        {/* Description */}
+        {/* Chart */}
         <SectionPaper>
-          <Typography variant="h6">Description</Typography>
-          <Divider sx={{ mb: 1 }} />
-          <Typography>No Description</Typography>
+          <FormControl fullWidth>
+            <InputLabel id="interval-select-label">Interval</InputLabel>
+            <Select
+              labelId="interval-select-label"
+              id="interval-select"
+              value={interval}
+              label="Interval"
+              onChange={(e) => setInterval(e.target.value as string)}
+            >
+              <MenuItem value="1d">1 Day</MenuItem>
+              <MenuItem value="4h">4 Hours</MenuItem>
+              <MenuItem value="1h">1 Hour</MenuItem>
+              <MenuItem value="15m">15 Minutes</MenuItem>
+            </Select>
+          </FormControl>
+
+          <ResponsiveContainer width="100%" height={400}>
+            <ComposedChart data={dataWithMA} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="openTime" tickFormatter={CustomTickFormatter} />
+              <YAxis  domain={['dataMin', 'dataMax']} />
+              <Tooltip content={<CustomTooltip/>} />
+              <Legend />
+               {/* Đường MA */}
+                <Line type="monotone" dataKey="sma20" stroke="#ff7300" dot={false} />
+                {/* Đường giá (close) */}
+                <Line type="monotone" dataKey="close" stroke="#8884d8" dot={false} />
+              <Brush dataKey="openTime" height={30} stroke="#8884d8" tickFormatter={CustomTickFormatter} />
+            </ComposedChart>
+          </ResponsiveContainer>
         </SectionPaper>
 
-        {/* Transaction History */}
-        <SectionPaper>
-          <Typography variant="h6">Transaction History</Typography>
-          <Typography>Transaction history table will go here.</Typography>
-        </SectionPaper>
-        <Box mt={2} display="flex" justifyContent={"center"}>
-        <Button variant="contained" color="primary">
-            Add Transaction
-          </Button>
-        </Box>
+        {/* Coin Details, Description, Transaction History, Button (giữ nguyên) */}
+         <SectionPaper>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6">Market Data</Typography>
+                  <Divider sx={{ mb: 1 }} />
+                  <Typography>24h High: ${coin ?  (coin.highPrice).toLocaleString(): 'Loading...'}</Typography>
+                  <Typography>24h Low: ${coin? (coin.lowPrice).toLocaleString() : 'Loading...'}</Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6">Your Holdings</Typography>
+                  <Divider sx={{ mb: 1 }} />
+                  <Typography>Total Quantity: {coin ? coin.totalQuantity: 'Loading'}</Typography>
+                  <Typography>Average Buy Price: ${coin? coin.averageBuyPrice.toLocaleString(): 'Loading'}</Typography>
+                  <Typography>Current Value: ${coin? coin.currentValue.toLocaleString() : 'Loading'}</Typography>
+                  <Typography>
+                    Profit/Loss:{' '}
+                    <Chip
+                      label={`${ coin? coin.profitLoss.toFixed(2) : 'Loading...'}`}
+                      color={ coin && coin.profitLoss >= 0 ? 'success' : 'error'}
+                      variant="outlined"
+                    />
+                  </Typography>
+                </Grid>
+              </Grid>
+            </SectionPaper>
+
+            {/* Description */}
+            <SectionPaper>
+              <Typography variant="h6">Description</Typography>
+              <Divider sx={{ mb: 1 }} />
+              <Typography>No Description</Typography>
+            </SectionPaper>
+            <SectionPaper>
+            <Typography variant="h6">Transaction History</Typography>
+                <Typography>Transaction history table will go here.</Typography>
+            </SectionPaper>
+
+            <Box mt={2} display="flex" justifyContent={"center"}>
+                <Button variant="contained" color="primary">
+                    Add Transaction
+                </Button>
+            </Box>
       </Box>
     </CustomLoading>
   );
