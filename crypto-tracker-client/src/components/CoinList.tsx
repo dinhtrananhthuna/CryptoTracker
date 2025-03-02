@@ -251,7 +251,7 @@ function CoinList() {
                                              <Chip
                                                 label={`${profitLoss.toFixed(2)}`}
                                                 color={profitLoss >= 0 ? 'success' : 'error'}
-                                                variant="outlined"
+                                                //variant="outlined"
                                             />
                                         </TableCell>
                                         <TableCell align="right">

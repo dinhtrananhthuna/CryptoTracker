@@ -1,82 +1,158 @@
-// src/components/CoinDetail.tsx
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { useParams } from 'react-router-dom';
 import {
-    Card,
-    CardContent,
-    Typography,
-    Avatar,
-    Box,
-    CircularProgress,
+  Box,
+  Typography,
+  Grid,
+  Avatar,
+  Chip,
+  Divider,
+  Button,
+  Paper,
 } from '@mui/material';
+import { styled } from '@mui/system';
+import { useParams } from 'react-router-dom';
+import axios from 'axios';
 import { Coin } from '../models';
+import CustomLoading from './CustomLoading'; // Import CustomLoading
+
+const SectionPaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+}));
+
+const ChartPlaceholder = () => (
+  <Box
+    sx={{
+      height: 300,
+      width: '100%',
+      backgroundColor: 'grey.200',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+    }}
+  >
+    <Typography>Chart Placeholder</Typography>
+  </Box>
+);
 
 function CoinDetail() {
-    const [coin, setCoin] = useState<Coin | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const { symbol } = useParams<{ symbol: string }>();
+  const [coin, setCoin] = useState<Coin | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchCoin = async () => {
-            setLoading(true);
-            try {
-                const response = await axios.get<Coin>(`/api/coins/${symbol}`);
-                setCoin(response.data);
-                setError(null);
-            } catch (error) {
-                console.error('Error fetching coin:', error);
-                setError('Failed to fetch coin details.');
-            } finally {
-                setLoading(false);
-            }
-        };
+  const { symbol } = useParams<{ symbol: string }>();
 
-        if (symbol) {
-            fetchCoin();
-        }
-    }, [symbol]);
+  useEffect(() => {
+    const fetchCoin = async () => {
+      setLoading(true);
+      try {
+        const response = await axios.get<Coin>(`/api/coins/${symbol}`);
+        setCoin(response.data);
+        setError(null);
+      } catch (error: any) {
+        console.error('Error fetching coin:', error);
+        setError(error.response?.data || 'Failed to fetch coin details.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    if (error) {
-        return (
-            <Box p={2}>
-                <Typography color="error">{error}</Typography>
-            </Box>
-        );
+    if (symbol) {
+      fetchCoin();
     }
+  }, [symbol]);
 
-    if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" p={2}>
-                <CircularProgress />
-            </Box>
-        );
-    }
+  if (error) {
+    return <Box p={2}><Typography color="error">{error}</Typography></Box>;
+  }
 
-    if (!coin) {
-        return <Box p={2}><Typography>Coin not found.</Typography></Box>; // Hoặc redirect đến trang 404
-    }
 
-    return (
-        <Card>
-            <CardContent>
-                <Box display="flex" alignItems="center" mb={2}>
-                    {coin.image && (
-                        <Avatar src={coin.image} alt={coin.name} sx={{ width: 56, height: 56, mr: 2 }} />
-                    )}
-                    <Typography variant="h5" component="div">
-                        {coin.name} ({coin.symbol})
-                    </Typography>
-                </Box>
-                 <Typography>Quote Asset: {coin.quoteAsset}</Typography>
-                <Typography>Total Quantity: {coin.totalQuantity}</Typography>
-                <Typography>Average Buy Price: {coin.averageBuyPrice}</Typography>
-                <Typography>Current Price: {coin.currentPrice}</Typography>
-                <Typography>Current Value: {coin.currentValue}</Typography>
-            </CardContent>
-        </Card>
-    );
+  if (!coin) {
+    return <CustomLoading isLoading={loading} rows={4} columns={1} ><Box p={2}><Typography>Coin not found.</Typography></Box></CustomLoading>;
+  }
+
+
+  const profitLoss = (coin.currentPrice - coin.averageBuyPrice) * coin.totalQuantity;
+
+  return (
+    <CustomLoading isLoading={loading} rows={4} columns={1}> {/* Bọc nội dung trong CustomLoading */}
+      <Box p={2}>
+        {/* Header */}
+        <SectionPaper>
+          <Grid container alignItems="center" spacing={2}>
+            <Grid item>
+              <Avatar src={coin.image} alt={coin.name} sx={{ width: 56, height: 56 }} />
+            </Grid>
+            <Grid item>
+              <Typography variant="h5">{coin.name} ({coin.symbol})</Typography>
+            </Grid>
+            <Grid item xs>
+              <Box display="flex" justifyContent="flex-end" alignItems="center">
+                <Typography variant="h6" sx={{ mr: 1 }}>
+                  ${coin.currentPrice.toLocaleString()}
+                </Typography>
+                {/* Placeholder for 24h change */}
+              </Box>
+            </Grid>
+          </Grid>
+        </SectionPaper>
+
+        {/* Chart */}
+        <SectionPaper>
+          <ChartPlaceholder />
+        </SectionPaper>
+
+        {/* Coin Details */}
+        <SectionPaper>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Typography variant="h6">Market Data</Typography>
+              <Divider sx={{ mb: 1 }} />
+              <Typography>Market Cap: $0</Typography>
+              <Typography>24h High: $0</Typography>
+              <Typography>24h Low: $0</Typography>
+              <Typography>Total Supply: 0</Typography>
+              <Typography>Circulating Supply: 0</Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography variant="h6">Your Holdings</Typography>
+              <Divider sx={{ mb: 1 }} />
+              <Typography>Total Quantity: {coin.totalQuantity}</Typography>
+              <Typography>Average Buy Price: ${coin.averageBuyPrice.toLocaleString()}</Typography>
+              <Typography>Current Value: ${coin.currentValue.toLocaleString()}</Typography>
+              <Typography>
+                Profit/Loss:{' '}
+                <Chip
+                  label={`${profitLoss.toFixed(2)}`}
+                  color={profitLoss >= 0 ? 'success' : 'error'}
+                  variant="outlined"
+                />
+              </Typography>
+            </Grid>
+          </Grid>
+        </SectionPaper>
+
+        {/* Description */}
+        <SectionPaper>
+          <Typography variant="h6">Description</Typography>
+          <Divider sx={{ mb: 1 }} />
+          <Typography>No Description</Typography>
+        </SectionPaper>
+
+        {/* Transaction History */}
+        <SectionPaper>
+          <Typography variant="h6">Transaction History</Typography>
+            <Typography>Transaction history table will go here.</Typography>
+        </SectionPaper>
+
+        <Box mt={2} display="flex" justifyContent={"center"}>
+        <Button variant="contained" color="primary">
+            Add Transaction
+          </Button>
+        </Box>
+      </Box>
+    </CustomLoading>
+  );
 }
 
 export default CoinDetail;
