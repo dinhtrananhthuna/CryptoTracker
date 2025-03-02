@@ -84,7 +84,10 @@ namespace CryptoTracker.Server.Services
             using (var stream = await response.Content.ReadAsStreamAsync())
             {
                 var ticker = await JsonSerializer.DeserializeAsync<BinanceTicker>(stream);
-
+                if (ticker == null)
+                {
+                    throw new Exception("Deserialize failed");
+                }
                 return decimal.Parse(ticker.Price);
             }
         }
@@ -110,6 +113,26 @@ namespace CryptoTracker.Server.Services
                 }
 
                 return (symbolInfo.BaseAsset, symbolInfo.QuoteAsset);
+            }
+        }
+        public async Task<Binance24hrTicker> Get24hrTicker(string symbol)
+        {
+            // Sử dụng ExecuteAsync, và trả về HttpResponseMessage từ hàm async bên trong
+            HttpResponseMessage response = await _retryPolicy.ExecuteAsync(async () =>
+            {
+                return await _httpClient.GetAsync($"ticker/24hr?symbol={symbol}");
+            });
+
+            response.EnsureSuccessStatusCode(); // Kiểm tra lỗi HTTP
+
+            using (var stream = await response.Content.ReadAsStreamAsync())
+            {
+                var ticker = await JsonSerializer.DeserializeAsync<Binance24hrTicker>(stream);
+                if (ticker == null)
+                {
+                    throw new Exception("Deserialize error");
+                }
+                return ticker; // Trả về ticker *sau khi* kiểm tra null
             }
         }
         // Các DTOs
@@ -141,6 +164,16 @@ namespace CryptoTracker.Server.Services
             [JsonPropertyName("quoteAsset")]
             public string QuoteAsset { get; set; }
 
+        }
+        public class Binance24hrTicker
+        {
+            [JsonPropertyName("highPrice")]
+            public string HighPrice { get; set; } = string.Empty;
+
+            [JsonPropertyName("lowPrice")]
+            public string LowPrice { get; set; } = string.Empty;
+
+            // Thêm các thuộc tính khác nếu bạn cần (ví dụ: volume)
         }
     }
 }
