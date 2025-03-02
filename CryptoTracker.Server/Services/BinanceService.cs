@@ -1,11 +1,14 @@
 ﻿// Services/BinanceService.cs
+using System;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json.Serialization;
-using System.Security.Cryptography;
-using System.Text;
+using System.Linq;
+using Polly;
+using Polly.Retry;
 
 namespace CryptoTracker.Server.Services
 {
@@ -15,6 +18,7 @@ namespace CryptoTracker.Server.Services
         private readonly string _apiKey;
         private readonly string _secretKey;
         private readonly string _baseUrl;
+        private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy; // Sử dụng Polly
 
         public BinanceService(HttpClient httpClient, IConfiguration configuration)
         {
@@ -22,26 +26,79 @@ namespace CryptoTracker.Server.Services
             _apiKey = configuration["Binance:ApiKey"] ?? "";
             _secretKey = configuration["Binance:SecretKey"] ?? "";
             _baseUrl = configuration["Binance:BaseUrl"] ?? "https://api.binance.com/api/v3/";
+
+
+            if (string.IsNullOrEmpty(_apiKey))
+            {
+                throw new ArgumentException("Binance API Key is not configured.");
+            }
+            // Secret Key có thể null/empty nếu chỉ gọi các public endpoints
+
             _httpClient.BaseAddress = new Uri(_baseUrl);
-            // Thêm API Key vào header (cho các request không cần signature)
             _httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            // Cấu hình retry policy (Polly)
+            _retryPolicy = Policy
+                .Handle<HttpRequestException>()
+                .OrResult<HttpResponseMessage>(response => (int)response.StatusCode == 429 || (int)response.StatusCode == 418) // 429: Rate limit, 418: IP banned
+                .WaitAndRetryAsync(
+                    retryCount: 3, // Số lần thử lại
+                    sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)) // Exponential backoff (2^1, 2^2, 2^3 giây)
+                    , onRetry: (outcome, timespan, retryAttempt, context) =>
+                    {
+                        // Log lỗi hoặc thông báo (có thể sử dụng ILogger)
+                        Console.WriteLine($"Retry {retryAttempt} after {timespan.TotalSeconds} seconds.  Status code: {outcome.Result?.StatusCode}, Exception: {outcome.Exception?.Message}");
+                    }
+
+                );
         }
+
+
         public async Task<decimal> GetPrice(string symbol)
         {
-            // https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT
-            var response = await _httpClient.GetAsync($"ticker/price?symbol={symbol}");
-            response.EnsureSuccessStatusCode();
+            HttpResponseMessage response = await _retryPolicy.ExecuteAsync(async () => //Sử dụng await ở đây
+            {
+                return await _httpClient.GetAsync($"ticker/price?symbol={symbol}"); // Trả về HttpResponseMessage
+            });
+
+            // Xử lý lỗi chi tiết
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    throw new Exception($"Symbol '{symbol}' not found.");
+                }
+                else if ((int)response.StatusCode == 429 || (int)response.StatusCode == 418)
+                {
+                    //Đã được xử lý trong retry policy, nhưng vẫn throw để thoát khỏi ExecuteAsync
+                    throw new HttpRequestException($"Rate limit exceeded or IP banned. Status code: {response.StatusCode}");
+                }
+                else
+                {
+                    // Các lỗi khác
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    throw new HttpRequestException($"Binance API error: {response.StatusCode} - {errorContent}");
+                }
+            }
 
             using (var stream = await response.Content.ReadAsStreamAsync())
             {
                 var ticker = await JsonSerializer.DeserializeAsync<BinanceTicker>(stream);
+
                 return decimal.Parse(ticker.Price);
             }
         }
+
+
         public async Task<(string BaseAsset, string QuoteAsset)> GetSymbolInfo(string symbol)
         {
-            var response = await _httpClient.GetAsync("exchangeInfo"); // Không cần symbol ở đây
+            HttpResponseMessage response = await _retryPolicy.ExecuteAsync(async () => // Chú ý await
+            {
+                return await _httpClient.GetAsync("exchangeInfo"); // Trả về HttpResponseMessage, không cần symbol
+            });
+
             response.EnsureSuccessStatusCode();
+
             using (var stream = await response.Content.ReadAsStreamAsync())
             {
                 var exchangeInfo = await JsonSerializer.DeserializeAsync<ExchangeInfo>(stream);
@@ -51,52 +108,39 @@ namespace CryptoTracker.Server.Services
                 {
                     throw new Exception($"Symbol {symbol} not found on Binance.");
                 }
+
                 return (symbolInfo.BaseAsset, symbolInfo.QuoteAsset);
             }
         }
+        // Các DTOs
+        public class BinanceTicker
+        {
+            [JsonPropertyName("symbol")]
+            public string Symbol { get; set; }
 
-        //(Optional) Thêm các methods khác để gọi các API endpoints cần thiết
-        // Ví dụ phương thức có sử dụng HMACSHA256 signature
-        // private string GenerateSignature(string data)
-        //    {
-        //      byte[] keyBytes = Encoding.UTF8.GetBytes(_secretKey);
-        //       byte[] dataBytes = Encoding.UTF8.GetBytes(data);
-        //
-        //        using (HMACSHA256 hmac = new HMACSHA256(keyBytes))
-        //       {
-        //            byte[] hash = hmac.ComputeHash(dataBytes);
-        //            return BitConverter.ToString(hash).Replace("-", "").ToLower();
-        //        }
-        //    }
-    }
-    // DTOs
-    public class BinanceTicker
-    {
-        [JsonPropertyName("symbol")]
-        public string Symbol { get; set; }
+            [JsonPropertyName("price")]
+            public string Price { get; set; } // Để string
+        }
+        public class ExchangeInfo
+        {
+            [JsonPropertyName("symbols")]
+            public List<SymbolInfo> Symbols { get; set; }
+        }
 
-        [JsonPropertyName("price")]
-        public string Price { get; set; }
-    }
-    public class ExchangeInfo
-    {
-        [JsonPropertyName("symbols")]
-        public List<SymbolInfo> Symbols { get; set; }
-    }
+        public class SymbolInfo
+        {
+            [JsonPropertyName("symbol")]
+            public string Symbol { get; set; }
 
-    public class SymbolInfo
-    {
-        [JsonPropertyName("symbol")]
-        public string Symbol { get; set; }
+            [JsonPropertyName("status")]
+            public string Status { get; set; }
 
-        [JsonPropertyName("status")]
-        public string Status { get; set; }
+            [JsonPropertyName("baseAsset")]
+            public string BaseAsset { get; set; }
 
-        [JsonPropertyName("baseAsset")]
-        public string BaseAsset { get; set; }
+            [JsonPropertyName("quoteAsset")]
+            public string QuoteAsset { get; set; }
 
-        [JsonPropertyName("quoteAsset")]
-        public string QuoteAsset { get; set; }
-        // ... các trường khác nếu cần
+        }
     }
 }

@@ -29,6 +29,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddHttpClient(); // Quan trọng: Đăng ký HttpClientFactory
 builder.Services.AddScoped<ICoinGeckoService, CoinGeckoService>(); // Đăng ký service
 builder.Services.AddScoped<IBinanceService, BinanceService>();
+builder.Services.AddScoped<IPortfolioService, PortfolioService>();
 
 var app = builder.Build();
 

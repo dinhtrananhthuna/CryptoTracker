@@ -1,42 +1,39 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using CryptoTracker.Server.Data;
 using CryptoTracker.Server.Models;
+using CryptoTracker.Server.Services;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 [Route("api/[controller]")]
 [ApiController]
 public class TransactionsController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IPortfolioService _portfolioService;
 
-    public TransactionsController(ApplicationDbContext context)
+    public TransactionsController(IPortfolioService portfolioService)
     {
-        _context = context;
+        _portfolioService = portfolioService;
     }
 
     // GET: api/Transactions
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Transaction>>> GetTransactions()
     {
-        return await _context.Transactions.ToListAsync();
+        return Ok(await _portfolioService.GetTransactionsAsync());
     }
 
     // GET: api/Transactions/ByCoin/BTCUSDT
-    [HttpGet("ByCoin/{symbol}")] // Sửa route
+    [HttpGet("ByCoin/{symbol}")]
     public async Task<ActionResult<IEnumerable<Transaction>>> GetTransactionsByCoin(string symbol)
     {
-        return await _context.Transactions.Where(t => t.CoinId == symbol).ToListAsync(); // Sửa lại
+        return Ok(await _portfolioService.GetTransactionsByCoinAsync(symbol));
     }
 
     // GET: api/Transactions/5
     [HttpGet("{id}")]
     public async Task<ActionResult<Transaction>> GetTransaction(int id)
     {
-        var transaction = await _context.Transactions.FindAsync(id);
-
+        var transaction = (await _portfolioService.GetTransactionsAsync()).FirstOrDefault(t => t.TransactionId == id); // Cách này không tối ưu, nhưng để cho đơn giản
         if (transaction == null)
         {
             return NotFound();
@@ -44,175 +41,68 @@ public class TransactionsController : ControllerBase
 
         return transaction;
     }
+    // Cách 2: Tối ưu hơn, thêm method vào service
+    /*
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Transaction>> GetTransaction(int id)
+    {
+      try{
+        var transaction = await _portfolioService.GetTransactionByIdAsync(id); // Phương thức này cần được thêm vào IPortfolioService và PortfolioService
+
+        if (transaction == null)
+        {
+            return NotFound();
+        }
+         return transaction;
+      } catch (Exception ex){
+          return BadRequest(ex.Message);
+      }
+    }
+    */
 
     // POST: api/Transactions
     [HttpPost]
     public async Task<ActionResult<Transaction>> PostTransaction(Transaction transaction)
     {
-        var coin = await _context.Coins.FindAsync(transaction.CoinId); // Tìm theo symbol
-        if (coin == null)
-        {
-            return BadRequest("Invalid Coin Symbol.");
-        }
-
-        if (transaction.TransactionType == TransactionType.Buy)
-        {
-            coin.TotalQuantity += transaction.Quantity;
-            coin.AverageBuyPrice = (coin.TotalQuantity * coin.AverageBuyPrice + transaction.Quantity * transaction.Price) / (coin.TotalQuantity + transaction.Quantity); // Tính lại
-        }
-        else // SELL
-        {
-            if (transaction.Quantity > coin.TotalQuantity)
-            {
-                return BadRequest("Cannot sell more than the total quantity.");
-            }
-            coin.TotalQuantity -= transaction.Quantity;
-        }
-
-        _context.Transactions.Add(transaction);
-
         try
         {
-            await _context.SaveChangesAsync();
+            var newTransaction = await _portfolioService.AddTransactionAsync(transaction);
+            return CreatedAtAction(nameof(GetTransaction), new { id = newTransaction.TransactionId }, newTransaction);
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex)
         {
             return BadRequest(ex.Message);
         }
-
-
-        return CreatedAtAction(nameof(GetTransaction), new { id = transaction.TransactionId }, transaction);
     }
+
     // PUT: api/Transactions/5
     [HttpPut("{id}")]
     public async Task<IActionResult> PutTransaction(int id, Transaction transaction)
     {
-        if (id != transaction.TransactionId)
-        {
-            return BadRequest("ID mismatch.");
-        }
-
-        var existingTransaction = await _context.Transactions.FindAsync(id);
-        if (existingTransaction == null)
-        {
-            return NotFound();
-        }
-        // Lấy thông tin coin
-        var coin = await _context.Coins.FindAsync(transaction.CoinId);
-        if (coin == null)
-        {
-            return BadRequest("Invalid Coin ID.");
-        }
-
-        // Hoàn tác thay đổi của giao dịch cũ
-        if (existingTransaction.TransactionType == TransactionType.Buy)
-        {
-            coin.TotalQuantity -= existingTransaction.Quantity;
-            if (coin.TotalQuantity > 0)
-            {
-                coin.AverageBuyPrice = (coin.TotalQuantity * coin.AverageBuyPrice - existingTransaction.Quantity * existingTransaction.Price) / coin.TotalQuantity;
-            }
-            else
-            {
-                coin.AverageBuyPrice = 0;
-            }
-        }
-        else // SELL
-        {
-            coin.TotalQuantity += existingTransaction.Quantity;
-            //Average buy price giữ nguyên
-        }
-
-        // Cập nhật các trường của transaction
-        existingTransaction.TransactionDate = transaction.TransactionDate;
-        existingTransaction.Quantity = transaction.Quantity;
-        existingTransaction.Price = transaction.Price;
-        existingTransaction.Fee = transaction.Fee;
-        existingTransaction.Exchange = transaction.Exchange;
-        existingTransaction.Notes = transaction.Notes;
-        existingTransaction.TransactionType = transaction.TransactionType;
-
-        // Áp dụng các thay đổi của giao dịch *mới*
-        if (transaction.TransactionType == TransactionType.Buy)
-        {
-            coin.TotalQuantity += transaction.Quantity;
-            coin.AverageBuyPrice = (coin.TotalQuantity * coin.AverageBuyPrice + transaction.Quantity * transaction.Price) / (coin.TotalQuantity + transaction.Quantity); // Tính lại
-        }
-        else
-        {
-            if (transaction.Quantity > coin.TotalQuantity)
-            {
-                return BadRequest("Cannot sell more than the total quantity.");
-            }
-            coin.TotalQuantity -= transaction.Quantity;
-        }
-
-
-        _context.Entry(existingTransaction).State = EntityState.Modified;
-
         try
         {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!TransactionExists(id))
-            {
-                return NotFound();
-            }
-            else
-            {
-                throw;
-            }
-        }
+            await _portfolioService.UpdateTransactionAsync(id, transaction);
+            return NoContent();
 
-        return NoContent();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     // DELETE: api/Transactions/5
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTransaction(int id)
     {
-        var transaction = await _context.Transactions.FindAsync(id);
-        if (transaction == null)
+        try
         {
-            return NotFound();
-        }
-
-        var coin = await _context.Coins.FindAsync(transaction.CoinId);
-        if (coin == null)
-        {
-            // Không nên xảy ra, nhưng cứ xử lý cho chắc
-            _context.Transactions.Remove(transaction);
-            await _context.SaveChangesAsync();
+            await _portfolioService.DeleteTransactionAsync(id);
             return NoContent();
         }
-
-        if (transaction.TransactionType == TransactionType.Buy)
+        catch (Exception ex)
         {
-            coin.TotalQuantity -= transaction.Quantity;
-            if (coin.TotalQuantity > 0)
-            {
-                coin.AverageBuyPrice = (coin.TotalQuantity * coin.AverageBuyPrice - transaction.Quantity * transaction.Price) / coin.TotalQuantity; // Tính lại
-            }
-            else
-            {
-                coin.AverageBuyPrice = 0;
-            }
-
+            return BadRequest(ex.Message);
         }
-        else // SELL
-        {
-            coin.TotalQuantity += transaction.Quantity;
-        }
-
-        _context.Transactions.Remove(transaction);
-        await _context.SaveChangesAsync();
-
-        return NoContent();
-    }
-    private bool TransactionExists(int id)
-    {
-        return _context.Transactions.Any(e => e.TransactionId == id);
     }
 }
