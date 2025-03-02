@@ -1,34 +1,45 @@
 // src/App.tsx
-import React, { useState, useEffect } from 'react';
-import { getCoins } from './services/api';
+import React from 'react';
+import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
+import CoinList from './components/CoinList';
+import TransactionList from './components/TransactionList';
+import AddCoinForm from './components/AddCoinForm';
+import AddTransactionForm from './components/AddTransactionForm';
+import CoinDetail from './components/CoinDetail';
 import './App.css';
 
 function App() {
-  const [coins, setCoins] = useState([]);
+    return (
+        <Router>
+            <div className="App">
+                <nav>
+                    <ul>
+                        <li>
+                            <Link to="/">Coins</Link>
+                        </li>
+                        <li>
+                            <Link to="/transactions">Transactions</Link>
+                        </li>
+                        <li>
+                            <Link to="/add-coin">Add Coin</Link>
+                        </li>
+                        <li>
+                            <Link to="/add-transaction">Add Transaction</Link>
+                        </li>
+                    </ul>
+                </nav>
 
-  useEffect(() => {
-    const fetchCoins = async () => {
-      try {
-        const data = await getCoins();
-        setCoins(data);
-      } catch (error) {
-        console.error('Error fetching coins:', error);
-      }
-    };
-
-    fetchCoins();
-  }, []);
-
-  return (
-    <div className="App">
-      <h1>Crypto Tracker</h1>
-      <ul>
-        {coins.map((coin: any) => (
-          <li key={coin.coinId}>{coin.name} ({coin.symbol})</li>
-        ))}
-      </ul>
-    </div>
-  );
+                <Routes>
+                    <Route path="/" element={<CoinList />} />
+                    <Route path="/transactions" element={<TransactionList />} />
+                    <Route path="/add-coin" element={<AddCoinForm />} />
+                    <Route path="/add-transaction" element={<AddTransactionForm />} />
+                    <Route path="/coin/:symbol" element={<CoinDetail />} />
+                    <Route path="*" element={<div>404 Not Found</div>}/>
+                </Routes>
+            </div>
+        </Router>
+    );
 }
 
 export default App;
