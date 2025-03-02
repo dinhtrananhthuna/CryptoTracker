@@ -13,18 +13,18 @@ public class BinanceController : ControllerBase
         _binanceService = binanceService;
     }
 
-    [HttpGet("Get24hrTicker")]
-    public async Task<ActionResult<BinanceService.Binance24hrTicker>> Get24hrTicker(string symbol)
+    [HttpGet("klines")]
+    public async Task<ActionResult<List<BinanceService.BinanceKline>>> GetKlines(string symbol, string interval, int? limit = null, long? startTime = null, long? endTime = null)
     {
         try
         {
-            var ticker = await _binanceService.Get24hrTicker(symbol);
-            return Ok(ticker);
+            var klines = await _binanceService.GetKlines(symbol, interval, limit, startTime, endTime);
+            return Ok(klines);
         }
         catch (Exception ex)
         {
             // Log lỗi
-            return StatusCode(500, ex.Message); // Hoặc trả về BadRequest, tùy theo lỗi
+            return StatusCode(500, ex.Message);
         }
     }
 }

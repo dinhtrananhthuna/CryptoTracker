@@ -7,6 +7,7 @@ namespace CryptoTracker.Server.Services
 {
     public interface IPortfolioService
     {
+        Task<CoinDetailDto> GetCoinDetailsAsync(string symbol);
         // Coin methods
         Task<IEnumerable<Coin>> GetCoinsAsync();
         Task<Coin> GetCoinAsync(string symbol);

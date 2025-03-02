@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using System.Linq;
 using Polly;
 using Polly.Retry;
+using Binance.Net.Interfaces;
 
 namespace CryptoTracker.Server.Services
 {
@@ -135,6 +136,74 @@ namespace CryptoTracker.Server.Services
                 return ticker; // Trả về ticker *sau khi* kiểm tra null
             }
         }
+
+        public async Task<List<BinanceKline>> GetKlines(string symbol, string interval, int? limit = null, long? startTime = null, long? endTime = null)
+        {
+            // Sử dụng ExecuteAsync, và trả về HttpResponseMessage từ hàm async bên trong
+            HttpResponseMessage response = await _retryPolicy.ExecuteAsync(async () =>
+            {
+                var url = $"klines?symbol={symbol}&interval={interval}";
+                if (limit.HasValue)
+                {
+                    url += $"&limit={limit.Value}";
+                }
+                if (startTime.HasValue)
+                {
+                    url += $"&startTime={startTime.Value}";
+                }
+                if (endTime.HasValue)
+                {
+                    url += $"&endTime={endTime.Value}";
+                }
+
+                return await _httpClient.GetAsync(url); // Trả về HttpResponseMessage
+            });
+
+            response.EnsureSuccessStatusCode(); // Kiểm tra lỗi HTTP
+
+            using (var stream = await response.Content.ReadAsStreamAsync())
+            {
+                // Chú ý: Binance trả về klines dưới dạng mảng của mảng, không phải mảng của object
+                var klines = await JsonSerializer.DeserializeAsync<List<List<object>>>(stream);
+                if (klines == null)
+                {
+                    throw new Exception("data null");
+                }
+
+                // Convert sang List<BinanceKline>
+                return klines.Select(k => new BinanceKline
+                {
+                    OpenTime = long.Parse(k[0].ToString()),
+                    Open = decimal.Parse(k[1].ToString()),
+                    High = decimal.Parse(k[2].ToString()),
+                    Low = decimal.Parse(k[3].ToString()),
+                    Close = decimal.Parse(k[4].ToString()),
+                    Volume = decimal.Parse(k[5].ToString()),
+                    CloseTime = long.Parse(k[6].ToString()),
+                    QuoteAssetVolume = decimal.Parse(k[7].ToString()),
+                    NumberOfTrades = int.Parse(k[8].ToString()),
+                    TakerBuyBaseAssetVolume = decimal.Parse(k[9].ToString()),
+                    TakerBuyQuoteAssetVolume = decimal.Parse(k[10].ToString()),
+                    // Ignore field 11
+                }).ToList();
+            }
+        }
+
+        public class BinanceKline
+        {
+            public long OpenTime { get; set; }
+            public decimal Open { get; set; }
+            public decimal High { get; set; }
+            public decimal Low { get; set; }
+            public decimal Close { get; set; }
+            public decimal Volume { get; set; }
+            public long CloseTime { get; set; }
+            public decimal QuoteAssetVolume { get; set; }
+            public int NumberOfTrades { get; set; }
+            public decimal TakerBuyBaseAssetVolume { get; set; }
+            public decimal TakerBuyQuoteAssetVolume { get; set; }
+        }
+
         // Các DTOs
         public class BinanceTicker
         {

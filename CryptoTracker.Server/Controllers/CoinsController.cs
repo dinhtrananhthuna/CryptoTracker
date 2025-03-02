@@ -84,6 +84,25 @@ public class CoinsController : ControllerBase
 
     }
 
+    [HttpGet("{symbol}/details")] 
+    public async Task<ActionResult<CoinDetailDto>> GetCoinDetails(string symbol)
+    {
+        try
+        {
+            var coinDetails = await _portfolioService.GetCoinDetailsAsync(symbol);
+            if (coinDetails == null)
+            {
+                return NotFound(); // Trả về 404 nếu không tìm thấy
+            }
+            return Ok(coinDetails);
+        }
+        catch (Exception ex)
+        {
+            // Log lỗi
+            return StatusCode(500, ex.Message);  // Hoặc trả về lỗi cụ thể hơn
+        }
+    }
+
     // GET: api/Coins/BTCUSDT
     [HttpGet("{symbol}")]
     public async Task<ActionResult<Coin>> GetCoin(string symbol)

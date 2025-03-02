@@ -20,6 +20,41 @@ namespace CryptoTracker.Server.Services
             _binanceService = binanceService;
         }
 
+        public async Task<CoinDetailDto> GetCoinDetailsAsync(string symbol)
+        {
+            var coin = await _context.Coins.FindAsync(symbol);
+            if (coin == null)
+            {
+                return null; // Hoặc throw exception
+            }
+
+            // Lấy thông tin 24h ticker
+            var ticker24h = await _binanceService.Get24hrTicker(symbol);
+
+            // Lấy thông tin giá
+            coin.CurrentPrice = await _binanceService.GetPrice(symbol);
+            coin.CurrentValue = coin.TotalQuantity * coin.CurrentPrice;
+
+            // Tạo DTO và map dữ liệu
+            var coinDetailDto = new CoinDetailDto
+            {
+                Symbol = coin.Symbol,
+                Name = coin.Name,
+                Image = coin.Image,
+                TotalQuantity = coin.TotalQuantity,
+                AverageBuyPrice = coin.AverageBuyPrice,
+                CurrentPrice = coin.CurrentPrice,
+                CurrentValue = coin.CurrentValue,
+                QuoteAsset = coin.QuoteAsset,
+                HighPrice = decimal.Parse(ticker24h.HighPrice), // Chuyển string sang decimal
+                LowPrice = decimal.Parse(ticker24h.LowPrice),   // Chuyển string sang decimal
+                ProfitLoss = (coin.CurrentPrice - coin.AverageBuyPrice) * coin.TotalQuantity
+            };
+
+            return coinDetailDto;
+        }
+
+
         // Coin methods
         public async Task<IEnumerable<Coin>> GetCoinsAsync()
         {
