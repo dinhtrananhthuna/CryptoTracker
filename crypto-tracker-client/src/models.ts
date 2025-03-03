@@ -13,11 +13,16 @@ export interface Coin {
 export interface Transaction {
     transactionId: number;
     coinId: string;
-    transactionType: 'Buy' | 'Sell'; // Sử dụng string literal type
+    transactionType: TransactionType
     transactionDate: string; // Có thể dùng Date, nhưng cần xử lý format khi hiển thị
     quantity: number;
     price: number;
     fee?: number; // Optional
     exchange?: string; // Optional
     notes?: string;  //Optional
+}
+
+export enum TransactionType {
+    Buy,  // Mặc định là 0
+    Sell, // Mặc định là 1
 }

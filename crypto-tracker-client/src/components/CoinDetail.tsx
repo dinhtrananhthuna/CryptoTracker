@@ -1,3 +1,5 @@
+import TransactionHistoryTable from './TransactionHistoryTable';
+import { Transaction } from '../models';
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -124,7 +126,7 @@ function CoinDetail() {
   const [klines, setKlines] = useState<BinanceKline[]>([]);
   const [interval, setInterval] = useState('1d');
   const [maPeriod, setMaPeriod] = useState(20); // Chu kỳ MA (mặc định là 20)
-
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const { symbol } = useParams<{ symbol: string }>();
 
@@ -139,6 +141,16 @@ function CoinDetail() {
             console.error("Error fetching Klines:", error);
         }
     }
+
+    const fetchTransactions = async (symbol: string) => {
+      try {
+          const response = await axios.get<Transaction[]>(`/api/transactions/bycoin/${symbol}`);
+          setTransactions(response.data);
+      } catch (error) {
+          console.error("Error fetching transactions:", error);
+          // Có thể set state error ở đây
+      }
+    };
 
   useEffect(() => {
     const fetchCoinDetails = async () => {
@@ -158,7 +170,6 @@ function CoinDetail() {
         setLoading(false);
       }
     };
-
     if (symbol) {
       fetchCoinDetails();
     }
@@ -169,6 +180,33 @@ function CoinDetail() {
       fetchKlines(coin.symbol, interval);
     }
   }, [interval, coin]);
+
+  //fetch transaction history
+  useEffect(() => {
+    const fetchCoinDetails = async () => {
+        setLoading(true);
+        try {
+            const response = await axios.get<CoinDetailDto>(`/api/coins/${symbol}/details`);
+            setCoin(response.data);
+            setError(null);
+
+            if (response.data) {
+                fetchKlines(response.data.symbol, interval);
+                // Gọi fetchTransactions ở đây
+                fetchTransactions(response.data.symbol)
+            }
+        } catch (error: any) {
+            console.error('Error fetching coin details:', error);
+            setError(error.response?.data || 'Failed to fetch coin details.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (symbol) {
+        fetchCoinDetails();
+    }
+  }, [symbol]);
 
   if (error) {
     return <Box p={2}><Typography color="error">{error}</Typography></Box>;
@@ -278,7 +316,9 @@ function CoinDetail() {
             </SectionPaper>
             <SectionPaper>
             <Typography variant="h6">Transaction History</Typography>
-                <Typography>Transaction history table will go here.</Typography>
+              <Divider sx={{ mb: 1 }} />
+              {/* Sử dụng TransactionHistoryTable */}
+              <TransactionHistoryTable transactions={transactions} />
             </SectionPaper>
 
             <Box mt={2} display="flex" justifyContent={"center"}>

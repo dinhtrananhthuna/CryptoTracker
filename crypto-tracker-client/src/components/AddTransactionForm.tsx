@@ -11,11 +11,11 @@ import {
     Box,
     Typography,
 } from '@mui/material';
-import { Coin, Transaction } from '../models';
+import { Coin, Transaction,TransactionType } from '../models';
 
 function AddTransactionForm() {
     const [coinId, setCoinId] = useState('');
-    const [transactionType, setTransactionType] = useState<'Buy' | 'Sell'>('Buy');
+    const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.Buy);
     const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 16));
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');
@@ -61,7 +61,7 @@ function AddTransactionForm() {
             setMessage('Transaction added successfully!');
             // Reset form
             setCoinId('');
-            setTransactionType('Buy');
+            setTransactionType(TransactionType.Buy);
             setTransactionDate(new Date().toISOString().slice(0, 16));
             setQuantity('');
             setPrice('');
@@ -102,7 +102,7 @@ function AddTransactionForm() {
                         <Select
                             labelId="type-select-label"
                             value={transactionType}
-                            onChange={(e) => setTransactionType(e.target.value as 'Buy' | 'Sell')}
+                            onChange={(e) => setTransactionType(e.target.value as TransactionType)}
                             label="Type"
                         >
                             <MenuItem value="Buy">Buy</MenuItem>
