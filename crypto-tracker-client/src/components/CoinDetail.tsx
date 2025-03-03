@@ -1,5 +1,3 @@
-import TransactionHistoryTable from './TransactionHistoryTable';
-import { Transaction } from '../models';
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -13,14 +11,14 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import { styled } from '@mui/system';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom'; // Import useNavigate
 import axios from 'axios';
 import CustomLoading from './CustomLoading';
 import {
-    ComposedChart, // Sử dụng ComposedChart để kết hợp Line và Bar
+    ComposedChart,
     CartesianGrid,
     XAxis,
     YAxis,
@@ -29,8 +27,11 @@ import {
     Brush,
     ResponsiveContainer,
     Line,
-    Bar,
+
 } from 'recharts';
+import TransactionHistoryTable from './TransactionHistoryTable';
+import { Transaction } from '../models';
+
 
 const SectionPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(2),
@@ -129,8 +130,9 @@ function CoinDetail() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const { symbol } = useParams<{ symbol: string }>();
+  const navigate = useNavigate(); // Lấy hook useNavigate
 
-   const fetchKlines = async (symbol: string, interval: string) => {
+    const fetchKlines = async (symbol: string, interval: string) => {
 
         try{
         const response = await axios.get<BinanceKline[]>(`/api/Binance/klines?symbol=${symbol}&interval=${interval}`);
@@ -142,14 +144,13 @@ function CoinDetail() {
         }
     }
 
-    const fetchTransactions = async (symbol: string) => {
-      try {
-          const response = await axios.get<Transaction[]>(`/api/transactions/bycoin/${symbol}`);
-          setTransactions(response.data);
-      } catch (error) {
-          console.error("Error fetching transactions:", error);
-          // Có thể set state error ở đây
-      }
+     const fetchTransactions = async (symbol: string) => {
+         try {
+            const response = await axios.get<Transaction[]>(`/api/transactions/bycoin/${symbol}`);
+             setTransactions(response.data);
+        } catch (error) {
+             console.error("Error fetching transactions:", error);
+          }
     };
 
   useEffect(() => {
@@ -183,30 +184,10 @@ function CoinDetail() {
 
   //fetch transaction history
   useEffect(() => {
-    const fetchCoinDetails = async () => {
-        setLoading(true);
-        try {
-            const response = await axios.get<CoinDetailDto>(`/api/coins/${symbol}/details`);
-            setCoin(response.data);
-            setError(null);
-
-            if (response.data) {
-                fetchKlines(response.data.symbol, interval);
-                // Gọi fetchTransactions ở đây
-                fetchTransactions(response.data.symbol)
-            }
-        } catch (error: any) {
-            console.error('Error fetching coin details:', error);
-            setError(error.response?.data || 'Failed to fetch coin details.');
-        } finally {
-            setLoading(false);
+        if (coin?.symbol) {
+            fetchTransactions(coin.symbol);
         }
-    };
-
-    if (symbol) {
-        fetchCoinDetails();
-    }
-  }, [symbol]);
+    }, [coin?.symbol]);
 
   if (error) {
     return <Box p={2}><Typography color="error">{error}</Typography></Box>;
@@ -224,6 +205,10 @@ function CoinDetail() {
         ...item,
         sma20: sma20[index],
     }));
+
+  const handleAddTransactionClick = () => {
+    navigate(`/add-transaction?symbol=${coin.symbol}`); // Chuyển hướng, kèm theo symbol
+  };
 
   return (
     <CustomLoading isLoading={loading}>
@@ -272,10 +257,10 @@ function CoinDetail() {
               <YAxis  domain={['dataMin', 'dataMax']} />
               <Tooltip content={<CustomTooltip/>} />
               <Legend />
-               {/* Đường MA */}
-                <Line type="monotone" dataKey="sma20" stroke="#ff7300" dot={false} />
-                {/* Đường giá (close) */}
-                <Line type="monotone" dataKey="close" stroke="#8884d8" dot={false} />
+                {/* Đường MA */}
+                 <Line type="monotone" dataKey="sma20" stroke="#ff7300" dot={false} />
+                 {/* Đường giá (close) */}
+                 <Line type="monotone" dataKey="close" stroke="#8884d8" dot={false} />
               <Brush dataKey="openTime" height={30} stroke="#8884d8" tickFormatter={CustomTickFormatter} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -316,13 +301,13 @@ function CoinDetail() {
             </SectionPaper>
             <SectionPaper>
             <Typography variant="h6">Transaction History</Typography>
-              <Divider sx={{ mb: 1 }} />
-              {/* Sử dụng TransactionHistoryTable */}
+             <Divider sx={{ mb: 1 }} />
+                {/* Sử dụng TransactionHistoryTable */}
               <TransactionHistoryTable transactions={transactions} />
             </SectionPaper>
 
             <Box mt={2} display="flex" justifyContent={"center"}>
-                <Button variant="contained" color="primary">
+                <Button variant="contained" color="primary" onClick={handleAddTransactionClick}>
                     Add Transaction
                 </Button>
             </Box>

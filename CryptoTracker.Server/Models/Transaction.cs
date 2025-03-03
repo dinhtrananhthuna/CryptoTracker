@@ -12,7 +12,7 @@
         public string? Exchange { get; set; }
         public string? Notes { get; set; }
 
-        public Coin Coin { get; set; } = null!; // Navigation property
+        public Coin? Coin { get; set; } = null!; // Navigation property
     }
 
     // Enum cho TransactionType
